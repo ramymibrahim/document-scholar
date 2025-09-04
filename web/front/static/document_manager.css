@@ -1,0 +1,13 @@
+body{
+    background-color: #f3f3f3;
+}
+#content p{
+    white-space: pre-wrap;
+}
+.chunk{
+    padding-bottom: 5px;
+    border-bottom: 1px solid;
+}
+.chunk:last-child{
+    border-bottom: none;
+}

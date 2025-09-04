@@ -1,0 +1,18 @@
+[
+    {
+        "id": "project",
+        "name": "Project",
+        "values": [
+            "Project 1",
+            "Project 2"
+        ]
+    },
+    {
+        "id": "document_type",
+        "name": "Document type",
+        "values": [
+            "Technical",
+            "Functional"
+        ]
+    }
+]
