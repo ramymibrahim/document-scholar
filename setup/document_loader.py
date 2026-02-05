@@ -1,7 +1,5 @@
 ### RUN AS
 ##python -m setup.document_loader
-main_folder = r"H:\document-sources"
-
 
 import os
 import uuid
@@ -31,6 +29,7 @@ SQL_DB_PATH = os.getenv("SQL_DB_PATH")
 CATEGORIES_PATH = os.getenv("CATEGORIES_PATH")
 DOCUMENT_FOLDER_DIR = os.getenv("DOCUMENT_FOLDER_DIR")
 EMBEDDING_MODEL_NAME = os.getenv("EMBEDDING_MODEL_NAME")
+main_folder = os.getenv("DOCUMENT_SOURCE_DIR")
 
 
 def get_docx_author(path):

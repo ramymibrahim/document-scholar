@@ -153,7 +153,11 @@ function activate(chatId) {
     $('.chat-item').removeClass('active');
     $(`#chats .chat-item[data-id="${chatId}"]`).addClass('active');
     $.get(`${API_BASE}chat/${chatId}`)
-        .done(renderChat)
+        .done((data) => {
+            renderChat(data);
+            // Check for pending interrupts (e.g. after page refresh)
+            checkPendingInterrupt(chatId);
+        })
         .fail((xhr) => {
             console.error('Failed to load chat:', xhr?.responseText || xhr);
             renderChat([]);
@@ -215,6 +219,18 @@ function openSSE(chatId, $input) {
 
     es.onmessage = (e) => {
         const event = JSON.parse(e.data)
+
+        // Handle interrupt events (human-in-the-loop)
+        if (event.type == 'interrupt') {
+            es.close();
+            $tool.remove();
+            $msg.remove();
+            $('#output .thinking').remove();
+            const interruptData = event.interrupts[0].value;
+            handleInterrupt(chatId, interruptData, $input);
+            return;
+        }
+
         if (event.type == 'AIMessageChunk') {
             updateDivText($tool, "");
             appendToken($msg, event.content);
@@ -314,6 +330,124 @@ function resetFilters() {
     state.filters = {};
     $('#filterForm').trigger('reset');
     bootstrap.Modal.getInstance('#filterModal').hide();
+}
+
+/** --------------------------- Interrupt Handling (Human-in-the-Loop) --------------------------- */
+
+function checkPendingInterrupt(chatId) {
+    fetch(`${API_BASE}chat/${chatId}/interrupt_status`)
+        .then(res => res.json())
+        .then(data => {
+            if (data.has_interrupt && data.interrupt_data) {
+                const interruptData = data.interrupt_data[0].value;
+                const $input = $('#message');
+                $input.prop('disabled', true);
+                handleInterrupt(chatId, interruptData, $input);
+            }
+        })
+        .catch(err => console.error('interrupt_status error:', err));
+}
+
+function handleInterrupt(chatId, data, $input) {
+    if (data.type === 'email_input_request') {
+        renderEmailInputForm(chatId, data, $input);
+    } else if (data.type === 'email_confirmation_request') {
+        renderEmailConfirmation(chatId, data, $input);
+    }
+}
+
+function renderEmailInputForm(chatId, data, $input) {
+    const $output = $('#output');
+    const fields = data.fields || [];
+    const emailField = fields.find(f => f.name === 'email') || { name: 'email', label: 'Email address' };
+    const nameField = fields.find(f => f.name === 'name') || { name: 'name', label: 'Recipient name' };
+
+    const $form = $(`
+        <div class="container system email-interrupt-form">
+            <h6>${escapeHtml(data.message)}</h6>
+            <div class="mb-2">
+                <label class="form-label">${escapeHtml(nameField.label)}</label>
+                <input type="text" class="form-control form-control-sm" id="interrupt-name"
+                       placeholder="Recipient name" />
+            </div>
+            <div class="mb-2">
+                <label class="form-label">${escapeHtml(emailField.label)}</label>
+                <input type="email" class="form-control form-control-sm" id="interrupt-email"
+                       placeholder="email@example.com" />
+            </div>
+            <div class="d-flex gap-2 mt-2">
+                <button class="btn btn-primary btn-sm" id="interrupt-submit-btn">Submit</button>
+                <button class="btn btn-outline-secondary btn-sm" id="interrupt-cancel-btn">Cancel</button>
+            </div>
+        </div>
+    `);
+
+    $output.append($form);
+    $output.scrollTop($output[0].scrollHeight);
+
+    $form.find('#interrupt-submit-btn').on('click', () => {
+        const email = $form.find('#interrupt-email').val().trim();
+        const name = $form.find('#interrupt-name').val().trim();
+        $form.find('button').prop('disabled', true);
+        resumeGraph(chatId, { email, name }, $input);
+    });
+
+    $form.find('#interrupt-cancel-btn').on('click', () => {
+        $form.find('button').prop('disabled', true);
+        resumeGraph(chatId, { email: '', name: '' }, $input);
+    });
+}
+
+function renderEmailConfirmation(chatId, data, $input) {
+    const $output = $('#output');
+    const preview = data.preview || {};
+
+    const $confirm = $(`
+        <div class="container system email-confirm-form">
+            <h6>${escapeHtml(data.message)}</h6>
+            <div class="card card-body mb-2">
+                <p class="mb-1"><strong>To:</strong> ${escapeHtml(preview.to_name || '')} &lt;${escapeHtml(preview.to_email || '')}&gt;</p>
+                <p class="mb-1"><strong>Subject:</strong> ${escapeHtml(preview.subject || '')}</p>
+                <p class="mb-0"><strong>Preview:</strong> ${escapeHtml(preview.body_preview || '')}</p>
+            </div>
+            <div class="d-flex gap-2 mt-2">
+                <button class="btn btn-success btn-sm" id="confirm-send-btn">Send</button>
+                <button class="btn btn-outline-secondary btn-sm" id="confirm-cancel-btn">Cancel</button>
+            </div>
+        </div>
+    `);
+
+    $output.append($confirm);
+    $output.scrollTop($output[0].scrollHeight);
+
+    $confirm.find('#confirm-send-btn').on('click', () => {
+        $confirm.find('button').prop('disabled', true);
+        resumeGraph(chatId, { confirmed: true }, $input);
+    });
+
+    $confirm.find('#confirm-cancel-btn').on('click', () => {
+        $confirm.find('button').prop('disabled', true);
+        resumeGraph(chatId, { confirmed: false }, $input);
+    });
+}
+
+function resumeGraph(chatId, value, $input) {
+    const $output = $('#output');
+    $output.append(`<div class="thinking tool"></div>`);
+    const $thinking = $('#output .thinking');
+    updateDivText($thinking, "Processing...");
+
+    fetch(`${API_BASE}chat/${chatId}/resume`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(value),
+    })
+        .then(() => openSSE(chatId, $input))
+        .catch((err) => {
+            console.error('Resume error:', err);
+            $input.prop('disabled', false);
+            $('#output .thinking').remove();
+        });
 }
 
 /* --------------------------- Helpers --------------------------- */

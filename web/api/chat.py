@@ -5,6 +5,8 @@ import json
 
 from uuid import uuid4
 
+from langgraph.types import Command
+
 from model.domain.core import GraphState, UserInput, to_jsonable
 from model.chat_graph import ScholarGraph
 from langchain_core.messages import (
@@ -25,6 +27,16 @@ def format_output(chunk):
         if isinstance(token, (BaseMessage, BaseMessageChunk)):
             return token.model_dump()
     if type == "updates":
+        # Detect LangGraph interrupt events
+        if "__interrupt__" in val:
+            interrupts = val["__interrupt__"]
+            return {
+                "type": "interrupt",
+                "interrupts": [
+                    {"value": intr.value} for intr in interrupts
+                ],
+            }
+
         token = next(iter(val.values()), None)
         if not token:
             return None
@@ -65,6 +77,22 @@ async def chat(chat_id):
     return "Ok", 200
 
 
+@chat_bp.route("/<uuid:chat_id>/resume", methods=["POST"])
+async def resume(chat_id):
+    """Store a resume value so the next stream call picks it up."""
+    if not chat_id:
+        return jsonify("please provide chat_id"), 404
+
+    chat_id = str(chat_id)
+    resume_value = await request.get_json(force=True)
+
+    if not hasattr(current_app, "pending_resumes"):
+        current_app.pending_resumes = {}
+    current_app.pending_resumes[chat_id] = resume_value
+
+    return "Ok", 200
+
+
 @chat_bp.route("/<uuid:chat_id>/stream", methods=["GET"])
 async def astream(chat_id):
     if not chat_id:
@@ -73,9 +101,18 @@ async def astream(chat_id):
     chat_id = str(chat_id)
     chat_graph: ScholarGraph = current_app.chat_graph
 
+    # Check if this is a resume after an interrupt
+    pending_resumes = getattr(current_app, "pending_resumes", {})
+    resume_value = pending_resumes.pop(chat_id, None)
+
     async def generate() -> AsyncIterator[bytes]:
         try:
-            async for chunk in await chat_graph.astream(chat_id, None):
+            if resume_value is not None:
+                stream_input = Command(resume=resume_value)
+            else:
+                stream_input = None
+
+            async for chunk in await chat_graph.astream(chat_id, stream_input):
                 data = format_output(chunk)
                 if data:
                     yield sse_data(json.dumps(data))
@@ -83,10 +120,43 @@ async def astream(chat_id):
             yield sse_event("error", {"message": str(e)})
             raise
         yield sse_event("end", {})
-        asyncio.create_task(chat_graph.afinalize_node(chat_id=chat_id))
+
+        # Only finalize if the graph completed (no pending interrupt)
+        snapshot = await chat_graph.aget_state(chat_id)
+        if snapshot and not snapshot.next:
+            asyncio.create_task(chat_graph.afinalize_node(chat_id=chat_id))
 
     headers = {"Content-Type": "text/event-stream", "Cache-Control": "no-cache"}
     return Response(generate(), headers=headers)
+
+
+@chat_bp.route("/<uuid:chat_id>/interrupt_status", methods=["GET"])
+async def get_interrupt_status(chat_id):
+    """Check if a chat has a pending interrupt (for page refresh recovery)."""
+    if not chat_id:
+        return jsonify("please provide chat_id"), 404
+
+    chat_graph: ScholarGraph = current_app.chat_graph
+    snapshot = await chat_graph.aget_state(str(chat_id))
+
+    if not snapshot:
+        return jsonify({"has_interrupt": False}), 200
+
+    has_interrupt = bool(snapshot.next)
+    interrupt_data = None
+
+    if has_interrupt and snapshot.tasks:
+        for task in snapshot.tasks:
+            if task.interrupts:
+                interrupt_data = [
+                    {"value": intr.value} for intr in task.interrupts
+                ]
+                break
+
+    return jsonify({
+        "has_interrupt": has_interrupt,
+        "interrupt_data": interrupt_data,
+    }), 200
 
 
 @chat_bp.route("/<uuid:chat_id>/current_state", methods=["Get"])

@@ -109,14 +109,22 @@ class VectorDbService:
 
         for md in file:
             if md != "file_path":
-                meta[md] = file[md]
+                # Milvus varchar fields reject None; default to empty string
+                meta[md] = file[md] if file[md] is not None else ""
+
+        # Standard loader fields with defaults so every document type
+        # produces the same Milvus schema regardless of loader used.
+        _LOADER_DEFAULTS = {"page": 0, "total_pages": 1}
 
         for idx, doc in enumerate(chunks):
             text = doc.page_content
             text = re.sub(r"\s+", " ", text).strip()  # normalize spaces
             doc.page_content = text
-            doc.metadata["chunk_index"] = idx
-            doc.metadata = {**doc.metadata, **meta}
+            loader_meta = {
+                k: doc.metadata.get(k, default)
+                for k, default in _LOADER_DEFAULTS.items()
+            }
+            doc.metadata = {**loader_meta, **meta, "chunk_index": idx}
             if idx == 0 and original_file_name:
                 doc.page_content = f"Source: {original_file_name}\n\n{doc.page_content}"
 

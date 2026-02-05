@@ -12,6 +12,7 @@ from services.meta_data import MetaDataService
 from services.vector_db_service import VectorDbService
 from services.db import Db
 from services.checkpointer import CheckPointer
+from services.email_service import EmailService
 
 from web.api.chat import chat_bp
 from web.api.meta_data import meta_data_bp
@@ -37,6 +38,12 @@ CHECKPOINTER_DB_PATH = os.getenv("CHECKPOINTER_DB_PATH")
 DOCUMENT_FOLDER_DIR = os.getenv("DOCUMENT_FOLDER_DIR")
 SESSION_SECRET_KEY = os.getenv("SESSION_SECRET_KEY")
 CATEGORIES_PATH = os.getenv("CATEGORIES_PATH")
+SMTP_HOST = os.getenv("SMTP_HOST")
+SMTP_PORT = int(os.getenv("SMTP_PORT", "587"))
+SMTP_USER = os.getenv("SMTP_USER")
+SMTP_PASSWORD = os.getenv("SMTP_PASSWORD")
+SENDER_EMAIL = os.getenv("SENDER_EMAIL")
+SENDER_NAME = os.getenv("SENDER_NAME", "Document Scholar")
 
 
 with open(CATEGORIES_PATH, "r") as file:
@@ -60,6 +67,15 @@ def create_app() -> Quart:
         checkpointer = CheckPointer(CHECKPOINTER_DB_PATH)
         checkpointer.checkpointer = await checkpointer.checkpointer_cm.__aenter__()
 
+        email_service = EmailService(
+            smtp_host=SMTP_HOST,
+            smtp_port=SMTP_PORT,
+            smtp_user=SMTP_USER,
+            smtp_password=SMTP_PASSWORD,
+            sender_email=SENDER_EMAIL,
+            sender_name=SENDER_NAME,
+        )
+
         chat_graph = ScholarGraph(
             text_llm_model,
             instruct_llm_model,
@@ -67,6 +83,7 @@ def create_app() -> Quart:
             vectordb,
             checkpointer,
             GENERAL_CHAT_PROMPT,
+            email_service=email_service,
         )
         app.secret_key = SESSION_SECRET_KEY
         app.chat_graph = chat_graph

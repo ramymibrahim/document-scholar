@@ -1,5 +1,6 @@
 storage/*
 __pycache__/
+node_modules/
 .vscode
 venv
 .venv
