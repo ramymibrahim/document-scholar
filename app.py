@@ -1,7 +1,19 @@
 import os
 import json
+import logging
+import sys
 from quart import Quart
 from dotenv import load_dotenv, find_dotenv
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    stream=sys.stdout
+)
+
+# Suppress noisy Windows asyncio connection reset errors
+logging.getLogger('asyncio').setLevel(logging.WARNING)
 
 from services.llm_init_service import (
     GetEmbeddingModel,

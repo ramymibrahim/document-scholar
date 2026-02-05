@@ -116,6 +116,7 @@ uv pip install -r setup/requirements.txt
 | MILVUS_PORT | 19530 | Port number for the Milvus database. |
 | MILVUS_DB | milv_db | Name of the Milvus database. |
 | CATEGORIES_PATH | setup/categories.json | Absolute path to the categories JSON file, containing custom categories for filtering documents. |
+| PROMPTS_DIR | *(empty)* | Optional path to a directory containing custom prompt YAML files. When set, prompts in this directory override the defaults. |
 | SQL_DB_PATH | storage/files.sqllite | Absolute path to the SQLite database for storing document metadata. Created automatically if it does not exist. |
 | CHECKPOINTER_DB_PATH | storage/checkpointer_db.sqllite | Absolute path to the SQLite database for storing chat conversations. Created automatically if it does not exist. |
 | DOCUMENT_FOLDER_DIR | storage/documents | Absolute path to the folder containing uploaded documents. These files can be downloaded if needed. |
@@ -134,7 +135,85 @@ After editing the `.env` file, update the **categories.json** file to include th
 
 The file is located at: **setup/categories.json**
 
-### 6. Initialize Databases
+### 6. Customize Prompts (Optional)
+
+The application uses prompt templates to classify user intent and generate responses. Default prompts are generic and work out of the box. For project-specific customization, you can override these prompts.
+
+#### How Prompt Overrides Work
+
+1. Default prompts are located in `model/prompts/defaults/`
+2. Set the `PROMPTS_DIR` environment variable to point to your custom prompts directory
+3. Any YAML file in `PROMPTS_DIR` with the same name as a default will override it
+
+#### Creating Custom Prompts
+
+1. Create a directory for your custom prompts:
+
+```bash
+mkdir my_prompts
+```
+
+2. Copy the default prompt(s) you want to customize:
+
+```bash
+cp model/prompts/defaults/fresh_classification.yaml my_prompts/
+cp model/prompts/defaults/chat_classification.yaml my_prompts/
+```
+
+3. Edit the YAML files to match your domain. Key sections to customize:
+
+   - **system_prompt**: The main instructions for the LLM classifier
+   - **few_shots**: Example queries and expected outputs for few-shot learning
+
+4. Set the environment variable in your `.env` file:
+
+```
+PROMPTS_DIR=my_prompts
+```
+
+#### Prompt File Structure
+
+Each prompt YAML file contains:
+
+```yaml
+system_prompt: |
+  # Instructions for the LLM...
+
+human_prompt: |
+  Query: {{query}}
+  Has selected documents:{{has_selected_documents}}
+
+ai_prompt: |
+  {{output}}
+
+few_shots:
+  - query: "Example user query"
+    has_selected_documents: false
+    output:
+      type: "inquiry"
+      generated_search_queries: ["search term 1", "search term 2"]
+      generated_llm_prompt: "Instructions for the response..."
+      depend_on_last_task: false
+      scope: "generic"
+```
+
+#### Available Prompt Files
+
+| File | Purpose |
+| --- | --- |
+| `fresh_classification.yaml` | Classifies user intent when there's no chat history |
+| `chat_classification.yaml` | Classifies user intent with existing chat context |
+
+#### Example: WHO Situation Reports
+
+An example prompt configuration for WHO situation reports is available in `setup/prompts_examples/who_situation_reports/`. To use it:
+
+```bash
+# Set in .env
+PROMPTS_DIR=setup/prompts_examples/who_situation_reports
+```
+
+### 7. Initialize Databases
 
 Run the setup script to create the Milvus database and initialize the required tables in the SQLite database.
 
@@ -144,7 +223,7 @@ Make sure the virtual environment (`.venv`) is activated, then run:
 python setup/setup.py
 ```
 
-### 7. Bulk Document Loading (Optional)
+### 8. Bulk Document Loading (Optional)
 
 If you want to load multiple documents into the system automatically (instead of uploading them one by one), use the **document_loader.py** script:
 

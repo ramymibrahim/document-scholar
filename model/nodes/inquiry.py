@@ -1,7 +1,10 @@
+import logging
 from langchain_core.messages import ToolMessage, AIMessage, HumanMessage
 from langchain_ollama import ChatOllama
 from model.domain.core import Conversation, GraphState
 from services.vector_db_service import VectorDbService
+
+logger = logging.getLogger(__name__)
 
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.prompts import (
@@ -17,10 +20,15 @@ from langchain_core.prompts import (
 async def inquiry(
     state: GraphState, text_llm: ChatOllama, vector_db: VectorDbService
 ):
+    logger.info(f"Inquiry node - selected_documents: {state.user_input.selected_documents}")
+    logger.info(f"Inquiry node - search_queries: {state.task.generated_search_queries}")
+    logger.info(f"Inquiry node - scope: {state.task.scope}")
 
     file_ids = state.user_input.selected_documents or None
     if not file_ids and state.user_input.filter:
         file_ids = vector_db.get_file_ids(state.user_input.filter)
+
+    logger.info(f"Inquiry node - file_ids after filter: {file_ids}")
 
     if not state.task.generated_search_queries and not file_ids:
         # No query generated and the prompt is not related with selected files or filter
@@ -33,8 +41,14 @@ async def inquiry(
     queries = state.task.generated_search_queries or [""]  # defulat query to get all
 
     documents = await vector_db.get_documents(queries, file_ids)
+    logger.info(f"Inquiry node - documents retrieved (before filter): {len(documents)}")
 
     documents = [doc for doc in documents if doc.metadata.get("score", 0.0) >= 0.5]
+    logger.info(f"Inquiry node - documents after score filter: {len(documents)}")
+
+    # Log unique file_ids in retrieved documents
+    doc_file_ids = set(doc.metadata.get("file_id") for doc in documents)
+    logger.info(f"Inquiry node - unique file_ids in documents: {doc_file_ids}")
 
     context = vector_db.get_context(documents)
 

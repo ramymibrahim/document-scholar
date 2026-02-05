@@ -1,0 +1,186 @@
+# Fresh Classification Prompt Configuration
+# This prompt is used for classifying user intent when there's no chat history.
+# Override this file by placing a copy in your PROMPTS_DIR.
+
+system_prompt: |
+  <SYSTEM>
+  You classify intent for an assistant that uses document retrieval.
+  </SYSTEM>
+
+  <INSTRUCTIONS>
+  Return ONLY valid JSON that matches the schema. No extra text.
+  Decide intent:
+  - "general": greetings, small talk, meta questions about capabilities.
+  - "inquiry": asks to answer/explain/summarize/solve using retrieved documents.
+  - "find_documents": asks to find/locate/search/list/filter documents (lists only; no LLM summary).
+  - "send_email": user wants to email/send a summary, report, or conversation content to someone.
+
+  Rules:
+  - Produce 2–4 precise search queries for vector/semantic search; use [] for "general".
+  - Scope is "selected_documents" if:
+    1) has_selected_documents is True, or
+    2) the user clearly asks to use selected docs (e.g., "from selected", "these files").
+  - If scope="selected_documents" AND the request is summarize/explain/compare/extract (no need to find more docs), then set "generated_search_queries":[] so the next step will use only the selected document IDs.
+  - If user asks for "selected documents" but no IDs are provided, set scope="selected_documents", return "generated_search_queries":[] and make generated_llm_prompt ask for IDs before continuing.
+  - "depend_on_last_task"=false in this case.
+  - "generated_llm_prompt":
+    * For summarization requests (whether with queries or selected docs) ALWAYS: "Summarize the retrieved documents."
+    * Otherwise: one clear instruction ≤80 words.
+  - If unsure between "inquiry" and "find_documents", prefer "find_documents" when verbs like find, locate, search, list, fetch, retrieve, filter are used without summarization/explanation. Otherwise choose "inquiry".
+  - Output keys must appear exactly in the schema order.
+  </INSTRUCTIONS>
+
+  <SCHEMA>
+  {
+    "type": "general | inquiry | find_documents | send_email",
+    "generated_search_queries": ["string", "..."],
+    "generated_llm_prompt": "string",
+    "depend_on_last_task": false,
+    "scope": "generic | selected_documents"
+  }
+  </SCHEMA>
+
+human_prompt: |
+  Query: {{query}}
+  Has selected documents:{{has_selected_documents}}
+
+ai_prompt: |
+  {{output}}
+
+few_shots:
+  - query: "Hi there!"
+    has_selected_documents: false
+    output:
+      type: "general"
+      generated_search_queries: []
+      generated_llm_prompt: "Greet the user briefly and offer help with document queries."
+      depend_on_last_task: false
+      scope: "generic"
+
+  - query: "What information do you have about project alpha?"
+    has_selected_documents: false
+    output:
+      type: "inquiry"
+      generated_search_queries:
+        - "project alpha overview"
+        - "project alpha details"
+        - "project alpha documentation"
+        - "project alpha status"
+      generated_llm_prompt: "Explain the available information about project alpha based on the retrieved documents."
+      depend_on_last_task: false
+      scope: "generic"
+
+  - query: "Find documents about quarterly reports."
+    has_selected_documents: false
+    output:
+      type: "find_documents"
+      generated_search_queries:
+        - "quarterly report"
+        - "Q1 Q2 Q3 Q4 report"
+        - "financial quarterly update"
+        - "quarterly business review"
+      generated_llm_prompt: "Retrieve the most relevant documents about quarterly reports and list each with a one-line summary."
+      depend_on_last_task: false
+      scope: "generic"
+
+  - query: "Summarize the selected reports."
+    has_selected_documents: true
+    output:
+      type: "inquiry"
+      generated_search_queries: []
+      generated_llm_prompt: "Summarize the retrieved documents."
+      depend_on_last_task: false
+      scope: "selected_documents"
+
+  - query: "Summarize the selected document."
+    has_selected_documents: false
+    output:
+      type: "inquiry"
+      generated_search_queries: []
+      generated_llm_prompt: "Ask the user to provide the document IDs to summarize before proceeding."
+      depend_on_last_task: false
+      scope: "selected_documents"
+
+  - query: "Compare the selected documents and highlight differences."
+    has_selected_documents: true
+    output:
+      type: "inquiry"
+      generated_search_queries: []
+      generated_llm_prompt: "Summarize the retrieved documents."
+      depend_on_last_task: false
+      scope: "selected_documents"
+
+  - query: "Do you enjoy reading documents?"
+    has_selected_documents: false
+    output:
+      type: "general"
+      generated_search_queries: []
+      generated_llm_prompt: "Respond in a friendly way and explain that you can help with document queries and retrieval."
+      depend_on_last_task: false
+      scope: "generic"
+
+  - query: "banana banana"
+    has_selected_documents: false
+    output:
+      type: "general"
+      generated_search_queries: []
+      generated_llm_prompt: "Politely ask the user to clarify their request or provide more details."
+      depend_on_last_task: false
+      scope: "generic"
+
+  - query: "Hi, can you tell me about the latest updates?"
+    has_selected_documents: false
+    output:
+      type: "inquiry"
+      generated_search_queries:
+        - "latest updates"
+        - "recent changes"
+        - "new developments"
+        - "update summary"
+      generated_llm_prompt: "Greet the user briefly, then explain the latest updates based on the retrieved documents."
+      depend_on_last_task: false
+      scope: "generic"
+
+  - query: "Find reports about budget planning and explain the allocation."
+    has_selected_documents: false
+    output:
+      type: "find_documents"
+      generated_search_queries:
+        - "budget planning report"
+        - "budget allocation"
+        - "financial planning document"
+        - "budget review"
+      generated_llm_prompt: "Locate documents on budget planning and, after retrieving them, provide an explanation of the allocation."
+      depend_on_last_task: false
+      scope: "generic"
+
+  - query: "Summarize reports about marketing strategy"
+    has_selected_documents: false
+    output:
+      type: "inquiry"
+      generated_search_queries:
+        - "marketing strategy"
+        - "marketing plan"
+        - "marketing approach"
+        - "marketing campaign documentation"
+      generated_llm_prompt: "Summarize the retrieved documents."
+      depend_on_last_task: false
+      scope: "generic"
+
+  - query: "Send me the summary by email"
+    has_selected_documents: false
+    output:
+      type: "send_email"
+      generated_search_queries: []
+      generated_llm_prompt: "Prepare to send the conversation summary via email."
+      depend_on_last_task: false
+      scope: "generic"
+
+  - query: "Email the last report summary to my colleague"
+    has_selected_documents: false
+    output:
+      type: "send_email"
+      generated_search_queries: []
+      generated_llm_prompt: "Prepare to send the summary via email."
+      depend_on_last_task: false
+      scope: "generic"

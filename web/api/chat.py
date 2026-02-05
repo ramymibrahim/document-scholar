@@ -1,7 +1,11 @@
 import asyncio
+import traceback
+import logging
 from typing import AsyncIterator
 from quart import Blueprint, jsonify, current_app, Response, request
 import json
+
+logger = logging.getLogger(__name__)
 
 from uuid import uuid4
 
@@ -63,7 +67,10 @@ async def chat(chat_id):
 
     chat_id = str(chat_id)
 
-    user_input = UserInput.model_validate(await request.get_json(force=True))
+    request_data = await request.get_json(force=True)
+    logger.info(f"Chat POST received: {request_data}")
+    user_input = UserInput.model_validate(request_data)
+    logger.info(f"Parsed user_input.selected_documents: {user_input.selected_documents}")
     state = GraphState(
         user_input=user_input,
         last_conversation=None,
@@ -106,6 +113,7 @@ async def astream(chat_id):
     resume_value = pending_resumes.pop(chat_id, None)
 
     async def generate() -> AsyncIterator[bytes]:
+        should_finalize = False
         try:
             if resume_value is not None:
                 stream_input = Command(resume=resume_value)
@@ -116,14 +124,20 @@ async def astream(chat_id):
                 data = format_output(chunk)
                 if data:
                     yield sse_data(json.dumps(data))
-        except Exception as e:
-            yield sse_event("error", {"message": str(e)})
-            raise
-        yield sse_event("end", {})
 
-        # Only finalize if the graph completed (no pending interrupt)
-        snapshot = await chat_graph.aget_state(chat_id)
-        if snapshot and not snapshot.next:
+            # Check if we should finalize after streaming completes
+            snapshot = await chat_graph.aget_state(chat_id)
+            if snapshot and not snapshot.next:
+                should_finalize = True
+        except Exception as e:
+            error_msg = f"{str(e)}\n{traceback.format_exc()}"
+            logger.error(f"Stream error for chat {chat_id}: {error_msg}")
+            yield sse_event("error", json.dumps({"message": str(e)}))
+
+        yield sse_event("end", json.dumps({}))
+
+        # Finalize outside the try block to ensure stream closes cleanly
+        if should_finalize:
             asyncio.create_task(chat_graph.afinalize_node(chat_id=chat_id))
 
     headers = {"Content-Type": "text/event-stream", "Cache-Control": "no-cache"}

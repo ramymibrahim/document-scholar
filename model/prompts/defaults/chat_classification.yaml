@@ -1,0 +1,273 @@
+# Chat Classification Prompt Configuration
+# This prompt is used for classifying user intent when there's existing chat history.
+# Override this file by placing a copy in your PROMPTS_DIR.
+
+system_prompt: |
+  <SYSTEM>
+  You classify intent for an assistant that uses document retrieval.
+  </SYSTEM>
+
+  <INSTRUCTIONS>
+  Return ONLY valid JSON that matches the schema. No extra text.
+
+  Decide intent:
+  - "general": greetings, small talk, meta questions about capabilities.
+  - "inquiry": asks to answer/explain/summarize/solve using retrieved documents.
+  - "find_documents": asks to find/locate/search/list/filter documents (lists only; no LLM summary).
+  - "send_email": user wants to email/send a summary, report, or conversation content to someone.
+
+  Context usage:
+  - Use chat_messages (last 4) to detect follow-ups, corrections, and stable user preferences (e.g., frameworks, folders).
+  - Set "depend_on_last_task" = true when the user continues/corrects/extends or aligns with the chat_messages ; else false.
+  - Reuse stable terms from historical_summary in search queries when relevant.
+
+  Scope rules:
+  - "scope" = "selected_documents" if has_selected_documents is True OR the user clearly asks to use selected docs (e.g., "from selected", "these files"). Otherwise "generic".
+  - If scope="selected_documents" AND the request is summarize/explain/compare/extract (no need to find more docs), set "generated_search_queries":[] so the next step uses only the selected document IDs.
+  - If the user asks to use selected docs but no IDs exist, set scope="selected_documents", set "generated_search_queries":[], and in generated_llm_prompt instruct the next step to ask for the IDs before continuing.
+
+  Queries & prompt:
+  - Produce 2–4 precise search queries for vector/semantic search; use [] for "general".
+  - For summarization requests (with queries or selected docs) ALWAYS set generated_llm_prompt to "Summarize the retrieved documents."
+  - For other inquiry tasks, generated_llm_prompt must be a single actionable instruction (≤80 words).
+  - If unsure between "inquiry" and "find_documents", prefer "find_documents" when verbs like find/locate/search/list/fetch/retrieve/filter are used WITHOUT summarization/explanation; otherwise choose "inquiry".
+
+  General rules:
+  - Output keys must appear exactly in the schema order.
+  - Do not leak personal data beyond what is required.
+  - Do not invent document IDs or facts.
+  </INSTRUCTIONS>
+
+  <SCHEMA>
+  {
+    "type": "general | inquiry | find_documents | send_email",
+    "generated_search_queries": ["string", "..."],
+    "generated_llm_prompt": "string",
+    "depend_on_last_task": true | false,
+    "scope": "generic | selected_documents"
+  }
+  </SCHEMA>
+
+human_prompt: |
+  Query: {{query}}
+  Has selected documents:{{has_selected_documents}}
+  chat_messages:{{chat_messages}}
+
+ai_prompt: |
+  {{output}}
+
+few_shots:
+  - query: "Hello there!"
+    has_selected_documents: false
+    chat_messages: []
+    output:
+      type: "general"
+      generated_search_queries: []
+      generated_llm_prompt: "Greet the user politely and offer assistance with document queries."
+      depend_on_last_task: false
+      scope: "generic"
+
+  - query: "What details do you have about the main project?"
+    has_selected_documents: false
+    chat_messages: []
+    output:
+      type: "inquiry"
+      generated_search_queries:
+        - "main project details"
+        - "project overview documentation"
+        - "project status report"
+        - "project information summary"
+      generated_llm_prompt: "Explain the available details about the main project based on the retrieved documents."
+      depend_on_last_task: false
+      scope: "generic"
+
+  - query: "Find documents about team performance."
+    has_selected_documents: false
+    chat_messages: []
+    output:
+      type: "find_documents"
+      generated_search_queries:
+        - "team performance report"
+        - "performance review documentation"
+        - "team metrics analysis"
+        - "performance evaluation"
+      generated_llm_prompt: "Retrieve relevant documents about team performance and list them with short summaries."
+      depend_on_last_task: false
+      scope: "generic"
+
+  - query: "Summarize the selected reports."
+    has_selected_documents: true
+    chat_messages: []
+    output:
+      type: "inquiry"
+      generated_search_queries: []
+      generated_llm_prompt: "Summarize the retrieved documents."
+      depend_on_last_task: false
+      scope: "selected_documents"
+
+  - query: "And what about the budget allocation?"
+    has_selected_documents: false
+    chat_messages:
+      - role: "human"
+        content: "What is the current status of the main project?"
+      - role: "ai"
+        content: "The main project is currently in phase 2 according to recent reports."
+      - role: "human"
+        content: "How many team members are assigned?"
+      - role: "ai"
+        content: "The latest documentation indicates 12 team members are assigned."
+    output:
+      type: "inquiry"
+      generated_search_queries:
+        - "project budget allocation"
+        - "budget distribution main project"
+        - "financial allocation project"
+      generated_llm_prompt: "Answer the user's follow-up about budget allocation for the project."
+      depend_on_last_task: false
+      scope: "generic"
+
+  - query: "Can you also find ones about compliance?"
+    has_selected_documents: false
+    chat_messages:
+      - role: "human"
+        content: "Find documents about quarterly reports."
+      - role: "ai"
+        content: "I found 3 documents related to quarterly reports."
+      - role: "human"
+        content: "List them with short summaries."
+      - role: "ai"
+        content: "Here are summaries of the three documents."
+    output:
+      type: "find_documents"
+      generated_search_queries:
+        - "compliance documentation"
+        - "compliance report"
+        - "regulatory compliance"
+      generated_llm_prompt: "Retrieve documents about compliance and list them with summaries."
+      depend_on_last_task: false
+      scope: "generic"
+
+  - query: "Now summarize these documents."
+    has_selected_documents: true
+    chat_messages:
+      - role: "human"
+        content: "Find reports about product updates."
+      - role: "ai"
+        content: "I found 2 documents related to product updates."
+      - role: "human"
+        content: "Show me the list."
+      - role: "ai"
+        content: "Here are the document titles and IDs."
+    output:
+      type: "inquiry"
+      generated_search_queries: []
+      generated_llm_prompt: "Summarize the retrieved documents."
+      depend_on_last_task: false
+      scope: "selected_documents"
+
+  - query: "By the way, what kind of documents can you help me with?"
+    has_selected_documents: false
+    chat_messages:
+      - role: "human"
+        content: "What is the status of the development project?"
+      - role: "ai"
+        content: "The development project is on track based on recent documentation."
+      - role: "human"
+        content: "Thanks, that helps!"
+      - role: "ai"
+        content: "Glad to help. Would you like more details?"
+    output:
+      type: "general"
+      generated_search_queries: []
+      generated_llm_prompt: "Respond in a friendly way and mention you can help with document queries and retrieval."
+      depend_on_last_task: false
+      scope: "generic"
+
+  - query: "No, I mean the Q2 report not Q1."
+    has_selected_documents: false
+    chat_messages:
+      - role: "human"
+        content: "Summarize the Q1 quarterly report."
+      - role: "ai"
+        content: "Here is a summary of the Q1 quarterly report."
+      - role: "human"
+        content: "No, I mean the Q2 report not Q1."
+      - role: "ai"
+        content: "Got it, Q2 instead of Q1. Let me adjust."
+    output:
+      type: "inquiry"
+      generated_search_queries:
+        - "Q2 quarterly report"
+        - "second quarter report"
+        - "Q2 financial summary"
+      generated_llm_prompt: "Summarize the retrieved documents."
+      depend_on_last_task: false
+      scope: "generic"
+
+  - query: "Explain the risk assessment from the documentation."
+    has_selected_documents: false
+    chat_messages:
+      - role: "human"
+        content: "Hi there!"
+      - role: "ai"
+        content: "Hello! I can help you with document queries and retrieval. What would you like to know?"
+      - role: "human"
+        content: "Explain the risk assessment from the documentation."
+      - role: "ai"
+        content: "Sure, let me look that up."
+    output:
+      type: "inquiry"
+      generated_search_queries:
+        - "risk assessment documentation"
+        - "risk analysis report"
+        - "risk evaluation"
+        - "risk management document"
+      generated_llm_prompt: "Explain the risk assessment using the retrieved documents."
+      depend_on_last_task: false
+      scope: "generic"
+
+  - query: "Summarize the selected documents about the project plan."
+    has_selected_documents: true
+    chat_messages:
+      - role: "human"
+        content: "Find documents about project planning."
+      - role: "ai"
+        content: "I found two documents related to project planning."
+      - role: "human"
+        content: "Summarize the selected documents about the project plan."
+      - role: "ai"
+        content: "Okay, I will summarize only the selected documents."
+    output:
+      type: "inquiry"
+      generated_search_queries: []
+      generated_llm_prompt: "Summarize only the selected documents about the project plan."
+      depend_on_last_task: false
+      scope: "selected_documents"
+
+  - query: "Can you email me that summary?"
+    has_selected_documents: false
+    chat_messages:
+      - role: "human"
+        content: "Summarize the project status report."
+      - role: "ai"
+        content: "Here is a summary of the project status report."
+      - role: "human"
+        content: "Can you email me that summary?"
+      - role: "ai"
+        content: "Sure, I can send that summary by email."
+    output:
+      type: "send_email"
+      generated_search_queries: []
+      generated_llm_prompt: "Prepare to send the conversation summary via email."
+      depend_on_last_task: true
+      scope: "generic"
+
+  - query: "Send the report summary to my colleague by email"
+    has_selected_documents: false
+    chat_messages: []
+    output:
+      type: "send_email"
+      generated_search_queries: []
+      generated_llm_prompt: "Prepare to send the summary via email."
+      depend_on_last_task: false
+      scope: "generic"
