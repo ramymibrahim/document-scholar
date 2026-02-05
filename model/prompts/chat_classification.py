@@ -16,7 +16,7 @@ from sklearn.metrics.pairwise import cosine_similarity
 
 SYS_PROMPT = """
 <SYSTEM>
-You classify intent for a technical assistant that uses internal technical documents.
+You classify intent for an assistant that uses WHO situation reports.
 </SYSTEM>
 
 <INSTRUCTIONS>
@@ -24,8 +24,9 @@ Return ONLY valid JSON that matches the schema. No extra text.
 
 Decide intent:
 - "general": greetings, small talk, meta questions about capabilities.
-- "technical": asks to answer/explain/summarize/solve using technical docs, specs, APIs, or code.
-- "find_documents": asks to find/locate/search/list/filter documents (lists only; no LLM summary).
+- "inquiry": asks to answer/explain/summarize/solve using WHO situation reports, epidemiological data, or public health guidance.
+- "find_documents": asks to find/locate/search/list/filter situation reports (lists only; no LLM summary).
+- "send_email": user wants to email/send a summary, report, or conversation content to someone.
 
 Context usage:
 - Use chat_messages (last 4) to detect follow-ups, corrections, and stable user preferences (e.g., frameworks, folders).
@@ -39,9 +40,9 @@ Scope rules:
 
 Queries & prompt:
 - Produce 2–4 precise search queries for vector/semantic search; use [] for "general".
-- For summarization requests (with queries or selected docs) ALWAYS set generated_llm_prompt to "Summarize the retrieved documents."
-- For other technical tasks, generated_llm_prompt must be a single actionable instruction (≤80 words).
-- If unsure between "technical" and "find_documents", prefer "find_documents" when verbs like find/locate/search/list/fetch/retrieve/filter are used WITHOUT summarization/explanation; otherwise choose "technical".
+- For summarization requests (with queries or selected docs) ALWAYS set generated_llm_prompt to "Summarize the retrieved situation reports."
+- For other inquiry tasks, generated_llm_prompt must be a single actionable instruction (≤80 words).
+- If unsure between "inquiry" and "find_documents", prefer "find_documents" when verbs like find/locate/search/list/fetch/retrieve/filter are used WITHOUT summarization/explanation; otherwise choose "inquiry".
 
 General rules:
 - Output keys must appear exactly in the schema order.
@@ -51,7 +52,7 @@ General rules:
 
 <SCHEMA>
 {
-  "type": "general | technical | find_documents",
+  "type": "general | inquiry | find_documents | send_email",
   "generated_search_queries": ["string", "..."],
   "generated_llm_prompt": "string",
   "depend_on_last_task": true | false,
@@ -74,207 +75,238 @@ few_shots = [
         "output": {
             "type": "general",
             "generated_search_queries": [],
-            "generated_llm_prompt": "Greet the user politely and offer assistance with technical documents or tasks.",
+            "generated_llm_prompt": "Greet the user politely and offer assistance with WHO situation reports.",
             "depend_on_last_task": False,
             "scope": "generic",
         },
     },
     {
-        "query": "How do I authenticate to the CDS API?",
+        "query": "What is the current case fatality rate for Ebola in the DRC?",
         "has_selected_documents": False,
         "chat_messages": [],
         "output": {
-            "type": "technical",
+            "type": "inquiry",
             "generated_search_queries": [
-                "CDS API authentication",
-                "CDS OAuth2 client credentials",
-                "CDS token endpoint",
-                "CDS auth header format",
+                "Ebola case fatality rate DRC",
+                "Ebola virus disease mortality Democratic Republic of Congo",
+                "Ebola outbreak DRC epidemiological data",
+                "WHO Ebola DRC deaths and cases",
             ],
-            "generated_llm_prompt": "Explain how to authenticate to the CDS API using OAuth2. Include required grant type, token endpoint, and headers.",
+            "generated_llm_prompt": "Explain the current case fatality rate for Ebola in the DRC based on the latest WHO situation reports.",
             "depend_on_last_task": False,
             "scope": "generic",
         },
     },
     {
-        "query": "Find documents about refresh token rotation in CDS.",
+        "query": "Find situation reports about cholera outbreaks in East Africa.",
         "has_selected_documents": False,
         "chat_messages": [],
         "output": {
             "type": "find_documents",
             "generated_search_queries": [
-                "CDS refresh token rotation",
-                "CDS token lifecycle",
-                "CDS OAuth2 refresh flow",
-                "CDS security guidelines refresh tokens",
+                "cholera outbreak East Africa",
+                "cholera situation report Kenya Uganda Tanzania",
+                "WHO cholera response East Africa",
+                "cholera epidemiological update East Africa",
             ],
-            "generated_llm_prompt": "Retrieve relevant documents about refresh token rotation in CDS and list them with short summaries.",
+            "generated_llm_prompt": "Retrieve relevant situation reports about cholera outbreaks in East Africa and list them with short summaries.",
             "depend_on_last_task": False,
             "scope": "generic",
         },
     },
     {
-        "query": "Summarize the selected documents about error handling.",
+        "query": "Summarize the selected reports about mpox response.",
         "has_selected_documents": True,
         "chat_messages": [],
         "output": {
-            "type": "technical",
+            "type": "inquiry",
             "generated_search_queries": [],
-            "generated_llm_prompt": "Summarize the retrieved documents.",
+            "generated_llm_prompt": "Summarize the retrieved situation reports.",
             "depend_on_last_task": False,
             "scope": "selected_documents",
         },
     },
     {
-        "query": "And what about the required headers?",
+        "query": "And what about the vaccination coverage?",
         "has_selected_documents": False,
         "chat_messages": [
-            HumanMessage(content="How do I authenticate to the CDS API?"),
+            HumanMessage(content="What is the current case fatality rate for Ebola in the DRC?"),
             AIMessage(
-                content="You need to use OAuth2 client credentials and request a token."
+                content="The case fatality rate for Ebola in the DRC is approximately 66% according to recent reports."
             ),
-            HumanMessage(content="Where can I find the token endpoint?"),
+            HumanMessage(content="How many confirmed cases were reported last month?"),
             AIMessage(
-                content="The token endpoint is in the CDS authentication section."
+                content="The latest situation report indicates 45 confirmed cases in the past month."
             ),
         ],
         "output": {
-            "type": "technical",
+            "type": "inquiry",
             "generated_search_queries": [
-                "CDS API authentication headers",
-                "CDS OAuth2 request headers",
-                "CDS API Authorization header format",
+                "Ebola vaccination coverage DRC",
+                "Ebola vaccine deployment Democratic Republic of Congo",
+                "WHO Ebola immunization campaign DRC",
             ],
-            "generated_llm_prompt": "Answer the users follow-up about required headers for CDS API authentication.",
+            "generated_llm_prompt": "Answer the user's follow-up about Ebola vaccination coverage in the DRC.",
             "depend_on_last_task": False,
             "scope": "generic",
         },
     },
     {
-        "query": "Can you also find ones about token revocation?",
+        "query": "Can you also find ones about yellow fever?",
         "has_selected_documents": False,
         "chat_messages": [
-            HumanMessage(content="Find documents about refresh token rotation in CDS."),
-            AIMessage(content="I found 3 documents related to refresh token rotation."),
+            HumanMessage(content="Find situation reports about cholera outbreaks in East Africa."),
+            AIMessage(content="I found 3 situation reports related to cholera outbreaks in East Africa."),
             HumanMessage(content="List them with short summaries."),
-            AIMessage(content="Here are summaries of the three documents."),
+            AIMessage(content="Here are summaries of the three situation reports."),
         ],
         "output": {
             "type": "find_documents",
             "generated_search_queries": [
-                "CDS token revocation",
-                "CDS OAuth2 revoke token endpoint",
-                "CDS security guidelines token revocation",
+                "yellow fever outbreak East Africa",
+                "yellow fever situation report WHO",
+                "yellow fever epidemiological update Africa",
             ],
-            "generated_llm_prompt": "Retrieve documents about token revocation in CDS and list them with summaries.",
+            "generated_llm_prompt": "Retrieve situation reports about yellow fever and list them with summaries.",
             "depend_on_last_task": False,
             "scope": "generic",
         },
     },
     {
-        "query": "Now summarize these docs.",
+        "query": "Now summarize these reports.",
         "has_selected_documents": True,
         "chat_messages": [
-            HumanMessage(content="Find documents about error handling in CDS."),
-            AIMessage(content="I found 2 documents related to error handling."),
+            HumanMessage(content="Find reports about COVID-19 variants of concern."),
+            AIMessage(content="I found 2 situation reports related to COVID-19 variants."),
             HumanMessage(content="Show me the list."),
-            AIMessage(content="Here are the document titles and IDs."),
+            AIMessage(content="Here are the report titles and IDs."),
         ],
         "output": {
-            "type": "technical",
+            "type": "inquiry",
             "generated_search_queries": [],
-            "generated_llm_prompt": "Summarize the retrieved documents.",
+            "generated_llm_prompt": "Summarize the retrieved situation reports.",
             "depend_on_last_task": False,
             "scope": "selected_documents",
         },
     },
     {
-        "query": "By the way, do you enjoy working with APIs?",
+        "query": "By the way, what kind of reports can you help me with?",
         "has_selected_documents": False,
         "chat_messages": [
-            HumanMessage(content="How do I authenticate to the CDS API?"),
+            HumanMessage(content="What is the current case fatality rate for Ebola in the DRC?"),
             AIMessage(
-                content="You need OAuth2 client credentials with a token endpoint."
+                content="The case fatality rate is approximately 66% based on recent WHO reports."
             ),
             HumanMessage(content="Thanks, that helps!"),
             AIMessage(
-                content="Glad to help. Would you like examples of request headers?"
+                content="Glad to help. Would you like more details on the outbreak response?"
             ),
         ],
         "output": {
             "type": "general",
             "generated_search_queries": [],
-            "generated_llm_prompt": "Respond in a friendly way and mention you are focused on helping with technical documents.",
+            "generated_llm_prompt": "Respond in a friendly way and mention you are focused on helping with WHO situation reports.",
             "depend_on_last_task": False,
             "scope": "generic",
         },
     },
     {
-        "query": "No, I mean DPS not CDS.",
+        "query": "No, I mean Sudan not South Sudan.",
         "has_selected_documents": False,
         "chat_messages": [
             HumanMessage(
-                content="Summarize documents about SMTP settings in Ethiopia."
+                content="Summarize reports about malaria control in South Sudan."
             ),
-            AIMessage(content="Here is a summary of CDS SMTP settings in Ethiopia."),
-            HumanMessage(content="No, I mean DPS not CDS."),
-            AIMessage(content="Got it, DPS instead of CDS. Let me adjust."),
+            AIMessage(content="Here is a summary of malaria control efforts in South Sudan."),
+            HumanMessage(content="No, I mean Sudan not South Sudan."),
+            AIMessage(content="Got it, Sudan instead of South Sudan. Let me adjust."),
         ],
         "output": {
-            "type": "technical",
+            "type": "inquiry",
             "generated_search_queries": [
-                "DPS SMTP settings Ethiopia",
-                "DPS email configuration Ethiopia",
-                "DPS SMTP server setup Ethiopia",
+                "malaria control Sudan",
+                "malaria situation report Sudan WHO",
+                "malaria prevention strategy Sudan",
             ],
-            "generated_llm_prompt": "Summarize the retrieved documents.",
+            "generated_llm_prompt": "Summarize the retrieved situation reports.",
             "depend_on_last_task": False,
             "scope": "generic",
         },
     },
     {
-        "query": "Explain the retry policy for failed requests in DPS.",
+        "query": "Explain the WHO risk assessment for avian influenza H5N1.",
         "has_selected_documents": False,
         "chat_messages": [
             HumanMessage(content="Hi there!"),
             AIMessage(
-                content="Hello! I can help you with technical documents and tasks. What would you like to know?"
+                content="Hello! I can help you with WHO situation reports and public health data. What would you like to know?"
             ),
             HumanMessage(
-                content="Explain the retry policy for failed requests in DPS."
+                content="Explain the WHO risk assessment for avian influenza H5N1."
             ),
             AIMessage(content="Sure, let me look that up."),
         ],
         "output": {
-            "type": "technical",
+            "type": "inquiry",
             "generated_search_queries": [
-                "DPS retry policy failed requests",
-                "DPS error handling retries",
-                "DPS exponential backoff",
-                "DPS request retry mechanism",
+                "WHO risk assessment avian influenza H5N1",
+                "H5N1 human transmission risk WHO",
+                "avian influenza H5N1 situation report",
+                "H5N1 public health risk evaluation",
             ],
-            "generated_llm_prompt": "Explain the retry policy for failed requests in DPS using the retrieved documents.",
+            "generated_llm_prompt": "Explain the WHO risk assessment for avian influenza H5N1 using the retrieved situation reports.",
             "depend_on_last_task": False,
             "scope": "generic",
         },
     },
     {
-        "query": "Summarize the selected documents about DPS retry policy.",
+        "query": "Summarize the selected reports about measles in West Africa.",
         "has_selected_documents": True,
         "chat_messages": [
-            HumanMessage(content="Find documents about retry policy in DPS."),
-            AIMessage(content="I found two documents related to retry policy in DPS."),
+            HumanMessage(content="Find reports about measles outbreaks in West Africa."),
+            AIMessage(content="I found two situation reports related to measles in West Africa."),
             HumanMessage(
-                content="Summarize the selected documents about DPS retry policy."
+                content="Summarize the selected reports about measles in West Africa."
             ),
-            AIMessage(content="Okay, I will summarize only the selected documents."),
+            AIMessage(content="Okay, I will summarize only the selected reports."),
         ],
         "output": {
-            "type": "technical",
+            "type": "inquiry",
             "generated_search_queries": [],
-            "generated_llm_prompt": "Summarize only the selected documents about DPS retry policy.",
+            "generated_llm_prompt": "Summarize only the selected situation reports about measles in West Africa.",
             "depend_on_last_task": False,
             "scope": "selected_documents",
+        },
+    },
+    {
+        "query": "Can you email me that summary?",
+        "has_selected_documents": False,
+        "chat_messages": [
+            HumanMessage(content="Summarize the WHO situation report on Ebola in the DRC."),
+            AIMessage(
+                content="Here is a summary of the WHO situation report on Ebola in the DRC."
+            ),
+            HumanMessage(content="Can you email me that summary?"),
+            AIMessage(content="Sure, I can send that summary by email."),
+        ],
+        "output": {
+            "type": "send_email",
+            "generated_search_queries": [],
+            "generated_llm_prompt": "Prepare to send the conversation summary via email.",
+            "depend_on_last_task": True,
+            "scope": "generic",
+        },
+    },
+    {
+        "query": "Send the report summary to my colleague by email",
+        "has_selected_documents": False,
+        "chat_messages": [],
+        "output": {
+            "type": "send_email",
+            "generated_search_queries": [],
+            "generated_llm_prompt": "Prepare to send the summary via email.",
+            "depend_on_last_task": False,
+            "scope": "generic",
         },
     },
 ]

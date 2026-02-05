@@ -12,15 +12,16 @@ import json
 
 SYS_PROMPT = """
 <SYSTEM>
-You classify intent for a technical assistant that uses internal technical documents.
+You classify intent for an assistant that uses WHO situation reports.
 </SYSTEM>
 
 <INSTRUCTIONS>
 Return ONLY valid JSON that matches the schema. No extra text.
 Decide intent:
 - "general": greetings, small talk, meta questions about capabilities.
-- "technical": asks to answer/explain/summarize/solve using technical docs, specs, APIs, or code.
-- "find_documents": asks to find/locate/search/list/filter documents (lists only; no LLM summary).
+- "inquiry": asks to answer/explain/summarize/solve using WHO situation reports, epidemiological data, or public health guidance.
+- "find_documents": asks to find/locate/search/list/filter situation reports (lists only; no LLM summary).
+- "send_email": user wants to email/send a summary, report, or conversation content to someone.
 
 Rules:
 - Produce 2–4 precise search queries for vector/semantic search; use [] for "general".
@@ -31,15 +32,15 @@ Rules:
 - If user asks for "selected documents" but no IDs are provided, set scope="selected_documents", return "generated_search_queries":[] and make generated_llm_prompt ask for IDs before continuing.
 - "depend_on_last_task"=false in this case.
 - "generated_llm_prompt":
-  * For summarization requests (whether with queries or selected docs) ALWAYS: "Summarize the retrieved documents."
+  * For summarization requests (whether with queries or selected docs) ALWAYS: "Summarize the retrieved situation reports."
   * Otherwise: one clear instruction ≤80 words.
-- If unsure between "technical" and "find_documents", prefer "find_documents" when verbs like find, locate, search, list, fetch, retrieve, filter are used without summarization/explanation. Otherwise choose "technical".
+- If unsure between "inquiry" and "find_documents", prefer "find_documents" when verbs like find, locate, search, list, fetch, retrieve, filter are used without summarization/explanation. Otherwise choose "inquiry".
 - Output keys must appear exactly in the schema order.
 </INSTRUCTIONS>
 
 <SCHEMA>
 {
-  "type": "general | technical | find_documents",
+  "type": "general | inquiry | find_documents | send_email",
   "generated_search_queries": ["string", "..."],
   "generated_llm_prompt": "string",
   "depend_on_last_task": false,
@@ -61,59 +62,59 @@ few_shots = [
         "output": {
             "type": "general",
             "generated_search_queries": [],
-            "generated_llm_prompt": "Greet the user briefly and offer help with technical documents or tasks.",
+            "generated_llm_prompt": "Greet the user briefly and offer help with WHO situation reports.",
             "depend_on_last_task": False,
             "scope": "generic",
         },
     },
     {
-        "query": "How do I authenticate to the CDS API?",
+        "query": "What is the current case fatality rate for Ebola in the DRC?",
         "has_selected_documents": False,
         "output": {
-            "type": "technical",
+            "type": "inquiry",
             "generated_search_queries": [
-                "CDS API authentication",
-                "CDS OAuth2 client credentials",
-                "CDS token endpoint",
-                "CDS auth header format",
+                "Ebola case fatality rate DRC",
+                "Ebola virus disease mortality Democratic Republic of Congo",
+                "Ebola outbreak DRC epidemiological data",
+                "WHO Ebola DRC deaths and cases",
             ],
-            "generated_llm_prompt": "Answer the authentication question using CDS docs. Explain the required grant type, token endpoint, and authorization headers.",
+            "generated_llm_prompt": "Explain the current case fatality rate for Ebola in the DRC based on the latest WHO situation reports.",
             "depend_on_last_task": False,
             "scope": "generic",
         },
     },
     {
-        "query": "Find documents about refresh token rotation in CDS.",
+        "query": "Find situation reports about cholera outbreaks in East Africa.",
         "has_selected_documents": False,
         "output": {
             "type": "find_documents",
             "generated_search_queries": [
-                "CDS refresh token rotation",
-                "CDS token lifecycle",
-                "CDS OAuth2 refresh flow",
-                "CDS security guidelines refresh tokens",
+                "cholera outbreak East Africa",
+                "cholera situation report Kenya Uganda Tanzania",
+                "WHO cholera response East Africa",
+                "cholera epidemiological update East Africa",
             ],
-            "generated_llm_prompt": "Retrieve the most relevant documents on refresh token rotation and list each with a one-line summary.",
+            "generated_llm_prompt": "Retrieve the most relevant situation reports on cholera outbreaks in East Africa and list each with a one-line summary.",
             "depend_on_last_task": False,
             "scope": "generic",
         },
     },
     {
-        "query": "Summarize the selected documents about error handling.",
+        "query": "Summarize the selected reports about mpox response.",
         "has_selected_documents": True,
         "output": {
-            "type": "technical",
+            "type": "inquiry",
             "generated_search_queries": [],
-            "generated_llm_prompt": "Summarize the retrieved documents.",
+            "generated_llm_prompt": "Summarize the retrieved situation reports.",
             "depend_on_last_task": False,
             "scope": "selected_documents",
         },
     },
     {
-        "query": "Summarize the selected document.",
+        "query": "Summarize the selected report.",
         "has_selected_documents": False,
         "output": {
-            "type": "technical",
+            "type": "inquiry",
             "generated_search_queries": [],
             "generated_llm_prompt": "Ask the user to provide the document IDs to summarize before proceeding.",
             "depend_on_last_task": False,
@@ -121,23 +122,23 @@ few_shots = [
         },
     },
     {
-        "query": "Compare the selected docs and highlight differences in rate limits.",
+        "query": "Compare the selected reports and highlight differences in transmission rates.",
         "has_selected_documents": True,
         "output": {
-            "type": "technical",
+            "type": "inquiry",
             "generated_search_queries": [],
-            "generated_llm_prompt": "Summarize the retrieved documents.",
+            "generated_llm_prompt": "Summarize the retrieved situation reports.",
             "depend_on_last_task": False,
             "scope": "selected_documents",
         },
     },
     {
-        "query": "Do you like working with APIs?",
+        "query": "Do you enjoy reading health reports?",
         "has_selected_documents": False,
         "output": {
             "type": "general",
             "generated_search_queries": [],
-            "generated_llm_prompt": "Respond in a friendly way and explain that you can help with technical documents and API questions.",
+            "generated_llm_prompt": "Respond in a friendly way and explain that you can help with WHO situation reports and public health questions.",
             "depend_on_last_task": False,
             "scope": "generic",
         },
@@ -154,49 +155,71 @@ few_shots = [
         },
     },
     {
-        "query": "Hi, can you also tell me how to authenticate to the CDS API?",
+        "query": "Hi, can you tell me about the WHO response to avian influenza H5N1?",
         "has_selected_documents": False,
         "output": {
-            "type": "technical",
+            "type": "inquiry",
             "generated_search_queries": [
-                "CDS API authentication",
-                "CDS OAuth2 client credentials",
-                "CDS token endpoint",
-                "CDS auth header format",
+                "WHO avian influenza H5N1 response",
+                "H5N1 outbreak situation report",
+                "avian influenza public health measures WHO",
+                "H5N1 human transmission risk assessment",
             ],
-            "generated_llm_prompt": "Answer the authentication question using CDS docs. Greet the user briefly, then explain required grant type, token endpoint, and authorization headers.",
+            "generated_llm_prompt": "Greet the user briefly, then explain the WHO response to avian influenza H5N1 based on situation reports.",
             "depend_on_last_task": False,
             "scope": "generic",
         },
     },
     {
-        "query": "Find documents about refresh tokens and explain how they work.",
+        "query": "Find reports about measles vaccination campaigns and explain the coverage.",
         "has_selected_documents": False,
         "output": {
             "type": "find_documents",
             "generated_search_queries": [
-                "CDS refresh token rotation",
-                "CDS refresh token lifecycle",
-                "CDS OAuth2 refresh flow",
-                "CDS token renewal process",
+                "measles vaccination campaign WHO",
+                "measles immunization coverage situation report",
+                "WHO measles outbreak response vaccination",
+                "measles vaccine rollout progress",
             ],
-            "generated_llm_prompt": "Locate documents on refresh tokens and, after retrieving them, provide an explanation of how refresh tokens work.",
+            "generated_llm_prompt": "Locate situation reports on measles vaccination campaigns and, after retrieving them, provide an explanation of the coverage.",
             "depend_on_last_task": False,
             "scope": "generic",
         },
     },
     {
-        "query": "Summarize documents that contain SMTP settings in DPS in Ethiopia",
+        "query": "Summarize reports about malaria control efforts in Sudan",
         "has_selected_documents": False,
         "output": {
-            "type": "technical",
+            "type": "inquiry",
             "generated_search_queries": [
-                "DPS SMTP settings Ethiopia",
-                "CDS DPS email configuration Ethiopia",
-                "DPS SMTP server setup Ethiopia",
-                "DPS messaging email SMTP Ethiopia",
+                "malaria control Sudan WHO",
+                "malaria situation report Sudan",
+                "malaria prevention strategy Sudan",
+                "WHO malaria response Sudan epidemiological data",
             ],
-            "generated_llm_prompt": "Summarize the retrieved documents.",
+            "generated_llm_prompt": "Summarize the retrieved situation reports.",
+            "depend_on_last_task": False,
+            "scope": "generic",
+        },
+    },
+    {
+        "query": "Send me the summary by email",
+        "has_selected_documents": False,
+        "output": {
+            "type": "send_email",
+            "generated_search_queries": [],
+            "generated_llm_prompt": "Prepare to send the conversation summary via email.",
+            "depend_on_last_task": False,
+            "scope": "generic",
+        },
+    },
+    {
+        "query": "Email the last report summary to my colleague",
+        "has_selected_documents": False,
+        "output": {
+            "type": "send_email",
+            "generated_search_queries": [],
+            "generated_llm_prompt": "Prepare to send the summary via email.",
             "depend_on_last_task": False,
             "scope": "generic",
         },

@@ -5,11 +5,13 @@ from model.domain.core import GraphState, Task, TaskType
 from services.checkpointer import CheckPointer
 
 from model.nodes.classify_and_extract_node import classify_and_extract_node
-from model.nodes.technical import technical
+from model.nodes.inquiry import inquiry
 from model.nodes.find_documents import find_documents
 from model.nodes.general import general
+from model.nodes.send_email import send_email_node
 from model.nodes.finalize import finalize, pre_finalize
 from services.vector_db_service import VectorDbService
+from services.email_service import EmailService
 
 
 class ScholarGraph:
@@ -21,6 +23,7 @@ class ScholarGraph:
         vector_db: VectorDbService,
         checkpointer: CheckPointer,
         general_chat_prompt: str,
+        email_service: EmailService | None = None,
     ):
         self.llm_model = llm_model
         self.instruct_llm_model = instruct_llm_model
@@ -28,6 +31,7 @@ class ScholarGraph:
         self.vector_db = vector_db
         self.general_chat_prompt = general_chat_prompt
         self.checkpointer = checkpointer
+        self.email_service = email_service
 
         self.graph = self.build_graph()
         self.finalize_graph = self.build_finalize_graph()
@@ -61,16 +65,18 @@ class ScholarGraph:
         graph_builder.add_node(
             "classify_and_extract_node", self.classify_and_extract_node
         )
-        graph_builder.add_node("technical", self.technical)
+        graph_builder.add_node("inquiry", self.inquiry)
         graph_builder.add_node("find_documents", self.find_documents)
         graph_builder.add_node("general", self.general)
+        graph_builder.add_node("send_email", self.send_email)
 
         graph_builder.add_edge(START, "classify_and_extract_node")
 
         graph_builder.add_conditional_edges("classify_and_extract_node", self.router)
-        graph_builder.add_edge("technical", END)
+        graph_builder.add_edge("inquiry", END)
         graph_builder.add_edge("find_documents", END)
         graph_builder.add_edge("general", END)
+        graph_builder.add_edge("send_email", END)
 
         return graph_builder.compile(checkpointer=self.checkpointer.checkpointer)
 
@@ -87,8 +93,11 @@ class ScholarGraph:
             state, self.instruct_llm_model, self.embedding_model
         )
 
-    async def technical(self, state: GraphState):
-        return await technical(state, self.llm_model, self.vector_db)
+    async def inquiry(self, state: GraphState):
+        return await inquiry(state, self.llm_model, self.vector_db)
+
+    async def send_email(self, state: GraphState):
+        return await send_email_node(state, self.email_service)
 
     async def find_documents(self, state: GraphState):
         return await find_documents(state, self.vector_db)
@@ -100,8 +109,10 @@ class ScholarGraph:
         return finalize(state, self.instruct_llm_model)
 
     def router(self, state: GraphState):
-        if state.task.type == TaskType.technical:
-            return "technical"
+        if state.task.type == TaskType.inquiry:
+            return "inquiry"
         if state.task.type == TaskType.find_documents:
             return "find_documents"
+        if state.task.type == TaskType.send_email:
+            return "send_email"
         return "general"

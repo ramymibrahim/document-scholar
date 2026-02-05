@@ -90,8 +90,9 @@ class UserInput(BaseModel):
 
 class TaskType(str, Enum):
     general = "general"
-    technical = "technical"
+    inquiry = "inquiry"
     find_documents = "find_documents"
+    send_email = "send_email"
 
 
 class Scope(str, Enum):
@@ -109,8 +110,10 @@ class Task(BaseModel):
     def get_description(self):
         if self.type == TaskType.find_documents:
             return "Finding documents"
-        if self.type == TaskType.technical:
-            return "Handling technical query"
+        if self.type == TaskType.inquiry:
+            return "Handling inquiry"
+        if self.type == TaskType.send_email:
+            return "Preparing email"
         return "General chat"
 
 

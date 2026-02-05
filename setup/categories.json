@@ -1,18 +1,18 @@
 [
     {
-        "id": "project",
-        "name": "Project",
+        "id": "country",
+        "name": "Country",
         "values": [
-            "Project 1",
-            "Project 2"
+            "oPt",
+            "Syria"
         ]
     },
     {
-        "id": "document_type",
-        "name": "Document type",
+        "id": "year",
+        "name": "Year",
         "values": [
-            "Technical",
-            "Functional"
+            "2024",
+            "2025"
         ]
     }
 ]
